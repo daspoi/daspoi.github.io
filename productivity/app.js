@@ -542,13 +542,13 @@ function openDialog(html, onSubmit) {
   dlg.innerHTML = `<form method="dialog">${html}</form>`;
   delete dlg.dataset.kind;
   const form = $('form', dlg);
-  // Cancel and Delete are submit buttons too; without this the browser blocks them on an empty required field.
-  $$('button[value="cancel"], button[value="delete"]', form).forEach(b => b.setAttribute('formnovalidate', ''));
-  form.onsubmit = async e => {
-    if (e.submitter?.value === 'cancel') return;
-    e.preventDefault();
-    if (await onSubmit(new FormData(form), e.submitter?.value) !== false) dlg.close();
-  };
+  const submit = async action => { if (await onSubmit(new FormData(form), action) !== false) dlg.close(); };
+  // Enter in a field submits the form through its first submit button, and Cancel and Delete come
+  // before Save. So they are plain buttons: Enter reaches Save, and the browser does not block
+  // Cancel on an empty required field.
+  $$('button[value="cancel"]', form).forEach(b => { b.type = 'button'; b.onclick = () => dlg.close(); });
+  $$('button[value="delete"]', form).forEach(b => { b.type = 'button'; b.onclick = () => submit('delete'); });
+  form.onsubmit = e => { e.preventDefault(); submit(e.submitter?.value); };
   dlg.showModal();
 }
 const colorPicker = sel => `<div class="field"><label>Color</label><div class="colors">${PALETTE.map(c => `<label style="background:${c}"><input type="radio" name="color" value="${c}" ${c === sel ? 'checked' : ''}><span></span></label>`).join('')}</div></div>`;
