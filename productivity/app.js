@@ -8,50 +8,13 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const icon = name => `<svg class="ico"><use href="#i-${name}"/></svg>`;
 const playIcon = running => icon(running ? 'stop' : 'play');
 
-// ---------- data source ----------
-// 'server': the Flask API at this origin. 'browser': store.js over this browser's localStorage.
-// An explicit choice is saved. With none saved, the server is probed once per page load, so the
-// GitHub Pages copy lands in browser mode by itself.
+// ---------- data ----------
+// store.js holds everything in this browser's localStorage. All data access goes through api().
 const LOCAL = ProductivityStore.createStore(localStorage);
-const MODE_LABEL = { server: 'Server', browser: 'This browser' };
-let MODE = (() => { try { const m = localStorage.getItem('mode'); return m in MODE_LABEL ? m : null; } catch { return null; } })();
-async function serverReachable() {
-  try {
-    const r = await fetch('api/state', { cache: 'no-store' });
-    return r.ok && (r.headers.get('content-type') || '').includes('json');
-  } catch { return false; }
-}
-async function detectMode() { if (!MODE) MODE = (await serverReachable()) ? 'server' : 'browser'; }
-async function setMode(m) {
-  if (m === MODE) return true;
-  if (m === 'server' && !(await serverReachable())) { alert('No server found at this address. Staying with browser data.'); return false; }
-  MODE = m;
-  try { localStorage.setItem('mode', m); } catch { /* keep for this page load only */ }
-  S.projectId = null;
-  updateModeBadge();
-  await refresh();
-  return true;
-}
-function updateModeBadge() { $('#modeBadge').textContent = MODE_LABEL[MODE] || ''; }
-
-// Ids are strings everywhere in the frontend. The archived server returns integers; convert them.
-const ID_KEYS = new Set(['id', 'project_id', 'task_id']);
-function stringIds(x) {
-  if (Array.isArray(x)) return x.map(stringIds);
-  if (x && typeof x === 'object') for (const k of Object.keys(x)) x[k] = ID_KEYS.has(k) ? (x[k] == null ? null : String(x[k])) : stringIds(x[k]);
-  return x;
-}
-// All data access goes through here. Same paths in both modes.
 async function api(method, url, body) {
-  if (MODE === 'browser') {
-    try { return LOCAL.request(method, url, body); } catch (e) { alert(e.message); throw e; }
-  }
-  const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
-  if (!r.ok) { const t = await r.text(); alert(t.replace(/<[^>]+>/g, '').trim() || r.statusText); throw new Error(t); }
-  return stringIds(await r.json());
+  try { return LOCAL.request(method, url, body); } catch (e) { alert(e.message); throw e; }
 }
 function exportBackup() {
-  if (MODE === 'server') { window.location = 'api/export'; return; }
   const blob = new Blob([JSON.stringify(LOCAL.request('GET', 'api/export'), null, 1)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = 'productivity-backup.json'; a.click();
@@ -152,7 +115,7 @@ async function fetchRecords(fromEpoch, toEpoch) {
 }
 async function startTimer(project_id, task_id = null) {
   const body = { project_id, task_id };
-  if (MODE === 'browser' && PREFS.mode === 'countdown') body.minutes = PREFS.minutes;
+  if (PREFS.mode === 'countdown') body.minutes = PREFS.minutes;
   await api('POST', 'api/timer/start', body);
   await refresh();
 }
@@ -217,12 +180,10 @@ function chime() {
 }
 
 // ---------- start mode: stopwatch or countdown ----------
-// Countdowns exist in the browser store only; the server is unchanged, so the row is hidden in server mode.
 const PRESETS = [15, 25, 45, 60];
 // The length drawer slides out to the right of the chips when Countdown is active. Clicks toggle
 // classes in place rather than re-rendering, so the CSS transition is visible.
 function modeRowHtml() {
-  if (MODE !== 'browser') return '';
   const cd = PREFS.mode === 'countdown';
   const custom = !PRESETS.includes(PREFS.minutes);
   return `<div class="mode-row ${cd ? 'open' : ''}">
@@ -593,10 +554,7 @@ function openRecordDialog(r, defaults) {
 function openMenu() {
   // type="button" so the chips do not submit the dialog form
   const chip = (key, val, label, on) => `<button type="button" class="chip ${on ? 'active' : ''}" data-pref="${key}" data-val="${val}">${label}</button>`;
-  const modeChip = m => `<button type="button" class="chip ${MODE === m ? 'active' : ''}" data-mode="${m}">${MODE_LABEL[m]}</button>`;
   openDialog(`<h2>Menu</h2>
-    <div class="field"><label>Data source</label><div class="chip-row">${modeChip('server')}${modeChip('browser')}</div>
-      <div class="muted" style="font-size:12px">Server and browser hold separate data. Move data with Export, then Import (Merge or Replace).</div></div>
     <div class="field"><label>Theme</label><div class="chip-row">${THEMES.map(([v, l]) => chip('theme', v, l, PREFS.theme === v)).join('')}</div></div>
     <div class="field"><label>Accent</label><div class="chip-row">${ACCENTS.map(([v, l, c]) => chip('accent', v, `<i class="dot" style="background:${c}"></i>${l}`, PREFS.accent === v)).join('')}</div></div>
     <div class="field"><label>Data</label><div class="menu">
@@ -611,9 +569,6 @@ function openMenu() {
       if (action === 'newproj') setTimeout(() => openProjectDialog(null), 50);
       if (action === 'newrec') setTimeout(() => openRecordDialog(null), 50);
     });
-  $$('[data-mode]', dlg).forEach(b => b.onclick = async () => {
-    if (await setMode(b.dataset.mode)) $$('[data-mode]', dlg).forEach(x => x.classList.toggle('active', x === b));
-  });
   $$('[data-pref]', dlg).forEach(b => b.onclick = () => {
     setPref(b.dataset.pref, b.dataset.val);
     $$(`[data-pref="${b.dataset.pref}"]`, dlg).forEach(x => x.classList.toggle('active', x === b));
@@ -621,17 +576,16 @@ function openMenu() {
 }
 // Import: Merge keeps what is here and adds or updates rows by id; Replace discards everything first.
 // Version 1 backups (archived server, older copies) get new ids on import, so merging the same
-// version 1 file twice duplicates its rows. The archived server itself accepts version 1 only.
+// version 1 file twice duplicates its rows.
 function openImportDialog(payload) {
   const n = k => Array.isArray(payload?.[k]) ? payload[k].length : 0;
   const when = payload?.exported ? new Date(payload.exported * 1000).toLocaleString() : 'unknown date';
   const v1 = payload?.version === 1;
-  const canMerge = MODE === 'browser';
   openDialog(`<h2>Import backup</h2>
     <p class="muted" style="margin:0 0 8px">${n('projects')} projects, ${n('tasks')} tasks, ${n('records')} records. Exported ${esc(when)}. Version ${esc(String(payload?.version ?? '?'))}.</p>
-    ${canMerge ? `<p class="muted" style="margin:0 0 8px;font-size:12px"><b>Merge</b> keeps your current data and adds or updates rows from the file. <b>Replace all</b> deletes current data first.${v1 ? ' This is a version 1 file: its rows get new ids, so merging it a second time would duplicate them.' : ''}</p>` : ''}
+    <p class="muted" style="margin:0 0 8px;font-size:12px"><b>Merge</b> keeps your current data and adds or updates rows from the file. <b>Replace all</b> deletes current data first.${v1 ? ' This is a version 1 file: its rows get new ids, so merging it a second time would duplicate them.' : ''}</p>
     <div class="actions"><button class="btn" value="cancel">Cancel</button>
-      ${canMerge ? '<button class="btn" value="merge">Merge</button>' : ''}
+      <button class="btn" value="merge">Merge</button>
       <button class="btn primary" value="replace">Replace all</button></div>`,
     async (_fd, action) => {
       await api('POST', action === 'merge' ? 'api/import?mode=merge' : 'api/import', payload);
@@ -673,8 +627,6 @@ $('#menuBtn').onclick = openMenu;
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 
 (async function start() {
-  await detectMode();
-  updateModeBadge();
   await refresh();
   // Caches the shell for offline use and makes the page installable.
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

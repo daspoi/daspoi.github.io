@@ -51,8 +51,8 @@ input, select { font: inherit; border-radius: 0; }
 [hidden] { display: none !important; }
 ::selection { background: var(--accent); color: var(--on-accent); }
 
-/* small uppercase mono label, used for section titles, tabs, chips, badges, field labels */
-.label, .section-title, .tabs button, .chip, .badge, .field label, .cal-grid .dow, .btn, .add-card, .load-more, .linkbtn {
+/* small uppercase mono label, used for section titles, tabs, chips, field labels */
+.label, .section-title, .tabs button, .chip, .field label, .cal-grid .dow, .btn, .add-card, .load-more, .linkbtn {
   font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; }
 
 .app { max-width: 560px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; position: relative; }
@@ -63,8 +63,6 @@ input, select { font: inherit; border-radius: 0; }
 .topbar { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border-strong); }
 .toprow { display: flex; align-items: center; gap: 10px; padding: 16px 16px 8px; }
 .topbar h1 { margin: 0; font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
-.badge { padding: 4px 8px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
-.badge:empty { display: none; }
 .spacer { flex: 1; }
 .icon-btn { width: 36px; height: 36px; display: grid; place-items: center; color: var(--muted); border: 1px solid transparent; }
 .icon-btn:hover { color: var(--text); border-color: var(--border); }
